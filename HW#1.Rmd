@@ -1,0 +1,124 @@
+---
+title: "Homework #1"
+author: "Madhav Viswesvaran"
+date: "`r format(Sys.Date(), '%B %d, %Y')`"
+output: pdf_document
+---
+
+
+```{r setup, echo=FALSE}
+library(knitr)
+# set global chunk options: images will be 7x5 inches
+knitr::opts_chunk$set(fig.width=7, fig.height=5)
+options(digits = 4)
+
+## indents are for indenting r code as formatted text
+## They may need to be adjusted depending on your OS
+# if your output looks odd, increase or decrease indent
+indent1 = '    '
+indent2 = '        '
+indent3 = '            '
+```
+
+
+```{r, echo=FALSE, warning = FALSE}
+#Import data/functions
+library(tidyverse)
+algae <- read_table("algaeBloom.txt", col_names=
+c('season','size','speed','mxPH','mnO2','Cl','NO3','NH4',
+'oPO4','PO4','Chla','a1','a2','a3','a4','a5','a6','a7'),
+na="XXXXXXX")
+#View(algae)
+```
+
+1. Descriptive Summary Statistics 
+a)
+```{r , echo = T}
+#number of observations in each season
+library(dplyr)
+algae %>% 
+  summarize(.by = season,n = n())
+```
+b)
+There are missing values for some of the chemicals.
+```{r, echo = T}
+#Calculating mean and variance for each chemical 
+
+algae %>% 
+  summarize(across(c(4:11), list(mean = ~ mean(.x, na.rm = TRUE), 
+                                 var = ~ var(.x, na.rm = TRUE)))) %>%
+  pivot_longer(cols = everything(), 
+               names_to = c("variable", "statistic"), 
+               names_sep = "_", 
+               values_to = "value") %>%
+  mutate(value = format(value, scientific = FALSE, digits = 6))
+#
+```
+It looks like NH4 has extremely large mean and variance relative to the other chemicals.
+```{r,  echo = T}
+#Calculating median and mad for each chemical
+algae %>% 
+  summarize(across(c(4:11), list(median = ~ median(.x, na.rm = TRUE), 
+                                 mad = ~ mad(.x, na.rm = TRUE)))) %>%
+  pivot_longer(cols = everything(), 
+               names_to = c("variable", "statistic"), 
+               names_sep = "_", 
+               values_to = "value") %>%
+  mutate(value = format(value, scientific = FALSE, digits = 6))
+
+```
+The median and MAD tend to be pretty similar for the chemicals expect for mxPH and mnO2, with NH4 still having the biggest MAD and median
+
+## 2 - Data visualization
+a)
+```{r, echo = T, warning=FALSE}
+#creating a histogram
+ggplot(algae, aes(x = mxPH)) +
+  geom_histogram(aes(y = ..density..), binwidth = 0.5, fill = "skyblue", color = "black") +
+  geom_density(color = "blue", linewidth = 1) +
+  geom_rug() +
+  ggtitle("Histogram of mxPH") +
+  xlab("mxPH") +
+  ylab("Density") +
+  theme_minimal()
+
+```
+The distribution slightly skews left.
+```{r, echo = T, warning= F, out.width = "80%"}
+#boxplot
+ggplot(algae, aes(x = speed, y = a4)) +
+  geom_boxplot(fill = "lightgreen", color = "black") +
+  ggtitle("A Conditioned Boxplot of Algal a4") +
+  xlab("Speed") +
+  ylab("Algal a4") +
+  theme_minimal()
+```
+It appears that the high and medium speeds have some outlier for algal a4.
+## 3 - Missing Values
+a)
+```{r, echo = T}
+#table with na values for each column
+num_rows_with_na <- sum(apply(is.na(algae), 1, any))
+num_rows_with_na
+
+algae %>%   
+  summarize(across(everything(), ~ sum(is.na(.)), .names = "count_{col}")) %>%
+  pivot_longer(cols = everything(), names_to = "column", values_to = "na_count")
+
+```
+b)
+16 observations contain missing values, and the table shows the number of missing values by variable.
+
+```{r, echo = T}
+algae.del <- algae[complete.cases(algae), ]
+#View(algae.del)
+```
+algae.del has 184 observations.
+
+## 4 - Bias Variance Tradeoff
+
+a)
+The terms that represent reducible error are $\text{Var}(\hat{f}(x_0))$ and $[\text{Bias}(\hat{f}(x_0))]^2$
+The term that represents irreducible error is $\text{Var}(e)$
+b)
+In the bias-variance tradeoff we know that the variance and bias are non-negative terms because they are squared, therefore even if the bias and variance are 0, the expected test error is still at least equal to the irreducible error, but in most cases it will be equal to the irreducible error plus some bias and variance since they are nonnegative.

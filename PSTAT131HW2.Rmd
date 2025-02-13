@@ -1,0 +1,272 @@
+---
+title: "Homework #2"
+author: "Madhav Viswesvaran"
+date: "`r format(Sys.Date(), '%B %d, %Y')`"
+output: pdf_document
+---
+
+
+```{r setup, echo=FALSE}
+library(knitr)
+library(tidyverse)
+library(ISLR)
+library(ROCR)
+# set global chunk options: images will be 7x5 inches
+knitr::opts_chunk$set(fig.width=7, fig.height=5)
+options(digits = 4)
+
+## indents are for indenting r code as formatted text
+## They may need to be adjusted depending on your OS
+# if your output looks odd, increase or decrease indent
+indent1 = '    '
+indent2 = '        '
+indent3 = '            '
+```
+
+
+# Linear Regression
+
+1. Fit a linear model to the data, in order to predict mpg using all of the other predictors except for name.
+Present the estimated coefficients. With a 0.01 threshold, comment on whether you can reject the null
+hypothesis that there is no linear association between mpg with any of the predictors.
+```{r}
+#fitting linear model to predict mpg, except for name
+#View(Auto)
+Auto_new <- Auto %>% select(-name)
+#setting origin as a factor
+Auto_new$origin = as.factor(Auto_new$origin)
+#View(Auto_new)
+mpg_lm <- lm(mpg ~., data = Auto_new)
+summary(mpg_lm)
+```
+At the 0.01 threshold we can reject the null hypothesis that there is no linear association between mpg and any of the predictors. The displacement, weight, year and origin are all significant predictors of mpg.
+
+2. Take the whole dataset as training set. What is the training mean squared error of this model? Can you
+calculate the test mean squared error?
+
+```{r}
+#calculating MSE
+mse <- mean(mpg_lm$residuals^2)
+```
+The mse on the whole dataset is about 10.85, and we cannot caluclate the test mse, since we used the whole dataset for fitting the model (training). 
+
+3. What gas mileage do you predict for an European car with 3 cylinders, displacement 132, horsepower
+of 115, weight of 3050, acceleration of 32, built in the year 1995? (Be sure to check how year is coded in the
+dataset).
+
+```{r, echo=T}
+new_data <- data.frame(origin = factor(2, levels = c(1,2,3)),  cylinders = 3, displacement = 132, horsepower = 115, weight = 3050, acceleration = 32, year = 95)
+predict(mpg_lm, newdata = new_data, 
+        level = 0.95, interval = 'predict')
+```
+The predicted mpg for a car with the given specifications is 40.16.
+
+4. On average, holding all other features fixed, what is the difference between the mpg of a Japanese car
+and the mpg of an American car? What is the difference between the mpg of a European car and the
+mpg of an American car?
+```{r}
+euro_vs_usa <- coef(mpg_lm)["origin2"]
+jpn_vs_usa <- coef(mpg_lm)["origin3"]
+print("Japanese vs American")
+jpn_vs_usa
+print("European vs American")
+euro_vs_usa
+```
+The difference between the mpg of a Japanese car and the mpg of an American car is 2.853. The difference between the mpg of a European car and the mpg of an American car is 2.63, holding all other features fixed.
+
+5. On average, holding all other predictor variables fixed, what is the change in mpg associated with a
+30-unit increase in displacement?
+
+```{r}
+coef(mpg_lm)["displacement"] * 30
+```
+The change in mpg associated with a 30-unit increase in displacement is 0.7194. 
+
+# Logistic Regression 
+```{r, warning = F}
+#reading data 
+algae <- read_table2("algaeBloom.txt", col_names=
+c('season','size','speed','mxPH','mnO2','Cl','NO3','NH4',
+'oPO4','PO4','Chla','a1','a2','a3','a4','a5','a6','a7'),
+na="XXXXXXX")
+#transforming data
+algae.transformed <- algae %>% mutate_at(vars(4:11), funs(log(.)))
+algae.transformed <- algae.transformed %>%
+mutate_at(vars(4:11),funs(ifelse(is.na(.),median(.,na.rm=TRUE),.)))
+# a1 == 0 means low
+algae.transformed <- algae.transformed %>% mutate(a1 = factor(as.integer(a1 > 5), levels = c(0, 1)))
+```
+```{r}
+algae.transformed
+```
+
+```{r}
+#classfication error rate function
+calc_error_rate <- function(predicted.value, true.value){
+return(mean(true.value != predicted.value))
+}
+#traning/test seeds
+set.seed(1)
+test.indices = sample(1:nrow(algae.transformed), 50)
+algae.train=algae.transformed[-test.indices,]
+algae.test=algae.transformed[test.indices,]
+```
+
+1. Prove that indeed the inverse of a logistic function is the logit function.
+$$\begin{split}
+p &= \frac{e^z}{1+e^z} \\
+(1+e^z)p &= e^z \\
+p + pe^z &= e^z \\
+p& = e^z - pe^z \\
+p &= e^z(1-p) \\
+e^z &= \frac{p}{1-p} \\
+z &= ln(\frac{p}{1-p})
+\end{split}$$
+
+2. Assume that $z = \beta_0 + \beta_1x_1$, and p = logistic(z). How does the odds of the outcome change if you
+increase $x_1$ by two? Assume $\beta_1$ is negative: what value does p approach as $x_1 \to \infty$? What value
+does $p$ approach as $x_1 \to -\infty$?
+
+The odds of the outcome changes to odds * $e^{2\beta_1}$ if you increase $x_1$ by two. If $\beta_1$ is negative, $p$ approaches 0 as $x_1$ goes to infinity, and $p$ approaches 1 as $x_1$ goes to negative infinity. 
+
+3. Use logistic regression to perform classification in the data application above. Logistic regression specifically
+estimates the probability that an observation as a particular class label. We can define a probability threshold
+for assigning class labels based on the probabilities returned by the glm fit.
+In this problem, we will simply use the “majority rule”. If the probability is larger than 50% class as label “1”.
+Fit a logistic regression to predict a1 given all other features (excluding a2 to a7) in the dataset using
+the glm function. Estimate the class labels using the majority rule and calculate the training and
+test errors using the calc_error_rate defined earlier.
+
+```{r}
+#logisitic regression
+glm.fit = glm(a1 ~ season+size+speed+mxPH+mnO2+Cl+NO3+NH4+oPO4+PO4+Chla,
+             data=algae.train, family=binomial)
+# Summarize the logistic regression model
+summary(glm.fit)
+```
+
+```{r}
+#training and test errors using the calc_error_rate
+pred.train = predict(glm.fit, newdata = algae.train, type = "response")
+pred.train = ifelse(pred.train > .5, 1,0)
+pred.test = predict(glm.fit, newdata = algae.test, type = "response")
+pred.test = ifelse(pred.test > .5, 1,0)
+test_error <- calc_error_rate(pred.test, algae.test$a1)
+train_error <- calc_error_rate(pred.train,algae.train$a1)
+cat("Training error:", train_error, "\n")
+cat("Test error:", test_error, "\n")
+cat("Estimated Class Values:","\n")
+pred.test
+```
+
+4. We will construct ROC curve based on the predictions of the test data from the model we obtained from the
+logistic regression above. Plot the ROC for the test data for the logistic regression fit. Compute the
+area under the curve(AUC).
+
+```{r}
+#plot ROC Curve
+library(ROCR)
+#reassigning pred.test to get probability 
+pred.test = predict(glm.fit, newdata = algae.test, type = "response")
+pred = prediction(pred.test, algae.test$a1)
+perf = performance(pred, measure="tpr", x.measure="fpr")
+plot(perf, col=2, lwd=3, main="ROC curve")
+abline(0,1)
+```
+
+```{r}
+#calculating auc 
+auc = performance(pred, "auc")@y.values
+auc
+```
+
+# Bootstrapping
+1. Given a sample of size n, what is the probability that any observation j is not in a bootstrap sample?
+Express your answer as a function of n. 
+
+$$
+(1-\frac{1}{n})^n
+$$
+2.Compute the above probability for n = 1000. 
+```{r}
+(1-(1/1000))^1000
+```
+
+3.Verify that your calculation is reasonable by resampling the numbers 1 to 1000 with replacement and
+printing the ratio of missing observations. Hint: use the unique and length functions to identify how many
+unique observations are in the sample. Note that the answer does not have to be exactly the same as what you
+get in b) due to randomness in sampling.
+
+```{r}
+set.seed(123)
+samp <- 1:1000
+bootstrap_sample <- sample(samp, size = 1000, replace= TRUE)
+1 - (length(unique(bootstrap_sample)) / 1000)
+```
+
+# Cross-validation estimate of test error
+
+```{r}
+dat = subset(Smarket, select = -c(Year,Today))
+dat$Direction = ifelse(dat$Direction == "Up", 1, 0)
+```
+
+1. Split dat into a training set of 700 observations, and a test set of the remaining observations. Fit a logistic regression model, on the training data, to predict the Direction using all other variables
+except for Year and Today as predictors. Calculate the error rate of this model on the test data. Use
+set.seed(123) in the begining of your answer.
+
+```{r}
+#test/train split
+set.seed(123)
+train.indices = sample(1:nrow(dat), 700)
+dat.train=dat[train.indices,]
+dat.test=dat[-test.indices,]
+
+#fitting logistic regression
+dat.glm.fit = glm(Direction ~ .,
+             data=dat.train, family=binomial)
+
+#calculating test error rate
+dat.pred.test = predict(dat.glm.fit, newdata = dat.test, type = "response")
+dat.pred.test = ifelse(dat.pred.test > .5, 1,0)
+test_error <- calc_error_rate(dat.pred.test, dat.test$Direction)
+round(test_error,2)
+```
+```{r}
+summary(dat.glm.fit)
+```
+
+
+2. Use a 10-fold cross-validation approach on the whole dat to estimate the test error rate.Report
+the estimated test error rate you obtain. Use set.seed(123) in the begining of your answer.
+
+```{r}
+#CV function
+do.chunk <- function(chunkid, folddef, dat, ...){
+  # Get training index
+  train = (folddef!=chunkid)
+  # Get training set and validation set
+  dat.train = dat[train, ]
+  dat.val = dat[-train, ]
+  # Train logistic regression model on training data
+  fit.train = glm(Direction ~ ., family = binomial, data = dat.train)
+  # get predicted value on the validation set
+  pred.val = predict(fit.train, newdata = dat.val, type = "response")
+  pred.val = ifelse(pred.val > .5, 1,0)
+  data.frame(fold = chunkid,
+  val.error = mean(pred.val != dat.val$Direction))
+}
+```
+
+```{r}
+set.seed(123)
+nfold = 10
+folds = cut(1:nrow(dat), breaks=nfold, labels=FALSE) %>% sample()
+error.folds = NULL 
+for (j in seq(10)){
+    tmp = do.chunk(chunkid=j, folddef=folds, dat = dat) 
+    error.folds = rbind(error.folds, tmp) # combine results 
+}
+cat("10-fold CV Test error rate:", "\n")
+error.folds$val.error %>% mean()
+```
